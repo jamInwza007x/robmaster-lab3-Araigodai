@@ -6,13 +6,15 @@ data_collection:
   files:
     position: "position_data.csv"
     attitude: "attitude_data.csv"
-    imu: "imu_data.csv"
+    imu: "idle_imu_data.csv"
     esc: "esc_data.csv"
+    distance: "idle_tof_data.csv"
   frequencies:
     position: 1
     attitude: 5
     imu: 10
     esc: 20
+    distance: 5
   buffer_time: 0.5   # Wait time before closing (seconds)
 
 movement:

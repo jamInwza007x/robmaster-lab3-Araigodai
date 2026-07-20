@@ -4,6 +4,7 @@ from robomaster import robot
 import sys
 import os
 from robomaster import robot
+import time
 
 # Add path for import module in src
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
