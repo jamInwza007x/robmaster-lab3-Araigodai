@@ -123,7 +123,7 @@ class ChassisController:
 
         with open(self.dist_file, mode="w", newline="") as f:
             # <-- NEW: Write headers for the 4 ToF sensors
-            csv.writer(f).writerow(["unix_timestamp", "tof1", "tof2", "tof3", "tof4"])
+            csv.writer(f).writerow(["unix_timestamp", "tof1"])
 
         with open(self.ir_file, mode="w", newline="") as f:
             csv.writer(f).writerow(
