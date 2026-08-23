@@ -1,6 +1,7 @@
 import csv
 import time
 import os
+import threading
 from datetime import datetime
 
 
@@ -45,6 +46,7 @@ class ChassisController:
         imu_name = f"log_{date_str}_{config['data_collection']['files']['imu']}.csv"
         esc_name = f"log_{date_str}_{config['data_collection']['files']['esc']}.csv"
         dist_name = f"log_{date_str}_{config['data_collection']['files']['distance']}.csv"  # <-- NEW: Distance filename
+        ir_name = f"log_{date_str}_{config['data_collection']['files']['infrared']}.csv"
 
         # 4. Name the file paths for the CSV files.
         self.pos_file = os.path.join(self.data_dir, pos_name)
@@ -54,6 +56,11 @@ class ChassisController:
         self.dist_file = os.path.join(
             self.data_dir, dist_name
         )  # <-- NEW: Distance file path
+        self.ir_file = os.path.join(self.data_dir, ir_name)
+
+        # Variables for managing the IR sensor background thread
+        self.is_logging_ir = False
+        self.ir_thread = None
 
     # =========================================================
     # Part 1: Function for writing a CSV file and receiving a return value
@@ -118,21 +125,26 @@ class ChassisController:
             # <-- NEW: Write headers for the 4 ToF sensors
             csv.writer(f).writerow(["unix_timestamp", "tof1", "tof2", "tof3", "tof4"])
 
+        with open(self.ir_file, mode="w", newline="") as f:
+            csv.writer(f).writerow(
+                ["unix_timestamp", "ir1_raw", "ir1_cm", "ir2_raw", "ir2_cm"]
+            )
+
         print("All CSV files have been prepared.")
 
     def read_sharp_ir_sensor_1(self):
         """Polls the ADC port and logs the raw voltage data."""
         # Read the ADC value from the sensor adapter (id=1, port=1)
         adc_value = self.ep_sensor_adaptor.get_adc(id=1, port=1)
-        print(f"Sensor adapter id1-port1 ADC is {adc_value}")
+        # print(f"Sensor adapter id1-port1 ADC is {adc_value}")
 
         return adc_value
 
     def read_sharp_ir_sensor_2(self):
         """Polls the ADC port and logs the raw voltage data."""
-        # Read the ADC value from the sensor adapter (id=1, port=1)
+        # Read the ADC value from the sensor adapter (id=1, port=2)
         adc_value = self.ep_sensor_adaptor.get_adc(id=1, port=2)
-        print(f"Sensor adapter id1-port2 ADC is {adc_value}")
+        # print(f"Sensor adapter id1-port2 ADC is {adc_value}")
 
         return adc_value
 
@@ -171,6 +183,27 @@ class ChassisController:
 
         return round(distance_cm, 2)
 
+    def _poll_ir_sensors(self):
+        """Background thread task to continuously read and log IR sensors."""
+        while self.is_logging_ir:
+            try:
+                # Read raw ADC values
+                ir1_raw = self.read_sharp_ir_sensor_1()
+                ir2_raw = self.read_sharp_ir_sensor_2()
+
+                # Convert raw values to centimeters
+                ir1_cm = self.adc_to_cm(ir1_raw)
+                ir2_cm = self.adc_to_cm(ir2_raw)
+
+                # Save both raw and converted values to the single CSV file
+                self.save_to_csv(self.ir_file, [ir1_raw, ir1_cm, ir2_raw, ir2_cm])
+
+            except Exception as e:
+                print(f"IR Logging Error: {e}")
+
+            # Poll at approximately 10Hz (0.1 seconds) to match other sensor frequencies
+            time.sleep(0.1)
+
     def start_sensors(self):
         """Activate all sensors according to the frequency set in the configuration."""
         print("Starting to collect sensor data...")
@@ -182,6 +215,12 @@ class ChassisController:
             freq=self.freq_dist, callback=self.handle_distance
         )  # <-- NEW: Start distance sensor
 
+        # Start background thread for IR sensor polling
+        self.is_logging_ir = True
+        self.ir_thread = threading.Thread(target=self._poll_ir_sensors)
+        self.ir_thread.daemon = True  # Ensure thread stops when main program exits
+        self.ir_thread.start()
+
     def stop_sensors(self):
         """Disable all sensors."""
         time.sleep(self.buffer_time)
@@ -190,6 +229,12 @@ class ChassisController:
         self.ep_chassis.unsub_imu()
         self.ep_chassis.unsub_esc()
         self.ep_sensor.unsub_distance()  # <-- NEW: Stop distance sensor
+
+        # Stop IR logging thread
+        self.is_logging_ir = False
+        if self.ir_thread is not None:
+            self.ir_thread.join()
+
         print("Data collection and saving to the file have been fully completed.")
 
     # =========================================================
