@@ -120,12 +120,56 @@ class ChassisController:
 
         print("All CSV files have been prepared.")
 
-    def read_dust_sensor(self):
-        """Fetch ADC data from id=1, port=1 and save to CSV"""
-        adc = self.ep_sensor_adaptor.get_adc(id=1, port=1)
-        self.save_to_csv(self.dust_file, [adc])
-        print("sensor adapter id1-port1 adc is {0}".format(adc))
-        return adc
+    def read_sharp_ir_sensor_1(self):
+        """Polls the ADC port and logs the raw voltage data."""
+        # Read the ADC value from the sensor adapter (id=1, port=1)
+        adc_value = self.ep_sensor_adaptor.get_adc(id=1, port=1)
+        print(f"Sensor adapter id1-port1 ADC is {adc_value}")
+
+        return adc_value
+
+    def read_sharp_ir_sensor_2(self):
+        """Polls the ADC port and logs the raw voltage data."""
+        # Read the ADC value from the sensor adapter (id=1, port=1)
+        adc_value = self.ep_sensor_adaptor.get_adc(id=1, port=2)
+        print(f"Sensor adapter id1-port2 ADC is {adc_value}")
+
+        return adc_value
+
+    def adc_to_cm(self, adc_value):
+        """
+        Converts the ADC reading to distance in centimeters.
+        Note: ADC_MAX, M, and C require hardware-specific calibration.
+        """
+        if adc_value <= 0:
+            return -1.0  # Prevent division by zero error
+
+        # Assuming 10-bit ADC resolution (0-1023) and 3.3V maximum system voltage
+        ADC_MAX = 1023.0
+        SYSTEM_VOLTAGE = 3.3
+
+        # 1. Convert ADC value back to voltage
+        voltage = (adc_value / ADC_MAX) * SYSTEM_VOLTAGE
+
+        # Prevent extremely low voltage (sensor reads > 30 cm, outside reliable range)
+        if voltage < 0.4:
+            return 30.0
+
+        # 2. Calculate distance using the linear equation (Inverse characteristic)
+        # Distance L is derived from V_o = M * (1 / (L + 0.42)) + C
+        # The M (Slope) and C (Intercept) values below are estimates based on the datasheet
+        M = 12.0
+        C = 0.0
+
+        distance_cm = (M / (voltage - C)) - 0.42
+
+        # Clamp the value to the 4 to 30 cm range based on sensor specifications
+        if distance_cm < 4.0:
+            return 4.0
+        elif distance_cm > 30.0:
+            return 30.0
+
+        return round(distance_cm, 2)
 
     def start_sensors(self):
         """Activate all sensors according to the frequency set in the configuration."""

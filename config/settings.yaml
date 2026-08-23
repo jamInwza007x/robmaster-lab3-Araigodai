@@ -4,11 +4,12 @@ robot:
 data_collection:
   data_dir: "data/raw/run1"
   files:
-    position: "position_data.csv"
-    attitude: "attitude_data.csv"
+    position: "position_data"
+    attitude: "attitude_data"
     imu: "idle_imu_data.csv"
     esc: "esc_data.csv"
-    distance: "idle_tof_data.csv"
+    distance: "idle_tof_data"
+    infrared: "ir_data"
   frequencies:
     position: 1
     attitude: 5
