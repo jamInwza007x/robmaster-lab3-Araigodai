@@ -2,6 +2,7 @@
 ####### example-requirements.txt #######
 #
 ###### Requirements without Version Specifiers ######
+# python 3.8.10 #
 robomaster
 pyyaml
 #
@@ -9,7 +10,8 @@ pyyaml
 #   See https://www.python.org/dev/peps/pep-0440/#version-specifiers
 numpy >= 1.18
 opencv-python >= 4.2
-netaddr >= 0.8
+netaddr >= 0
+.8
 netifaces >= 0.10
 #
 ###### Refer to other requirements files ######
@@ -21,5 +23,5 @@ netifaces >= 0.10
 #http://wxpython.org/Phoenix/snapshot-builds/wxPython_Phoenix-3.0.3.dev1820+49a8884-cp34-none-win_amd64.whl
 #
 ###### Additional Requirements without Version Specifiers ######
-#   Same as 1st section, just here to show that you can put things in any order.
+#   Sameas 1st section, just here to show that you can put things in any order.
 #

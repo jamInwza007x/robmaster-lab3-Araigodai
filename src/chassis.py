@@ -148,7 +148,7 @@ class ChassisController:
 
         return adc_value
 
-    def adc_to_cm(self, adc_value):
+    def adc_to_cm(self, adc_value,C):
         """
         Converts the ADC reading to distance in centimeters.
         Note: ADC_MAX, M, and C require hardware-specific calibration.
@@ -171,7 +171,6 @@ class ChassisController:
         # Distance L is derived from V_o = M * (1 / (L + 0.42)) + C
         # The M (Slope) and C (Intercept) values below are estimates based on the datasheet
         M = 12.0
-        C = 0.0
 
         distance_cm = (M / (voltage - C)) - 0.42
 
@@ -192,8 +191,8 @@ class ChassisController:
                 ir2_raw = self.read_sharp_ir_sensor_2()
 
                 # Convert raw values to centimeters
-                ir1_cm = self.adc_to_cm(ir1_raw)
-                ir2_cm = self.adc_to_cm(ir2_raw)
+                ir1_cm = self.adc_to_cm(ir1_raw,0.8)
+                ir2_cm = self.adc_to_cm(ir2_raw,0)
 
                 # Save both raw and converted values to the single CSV file
                 self.save_to_csv(self.ir_file, [ir1_raw, ir1_cm, ir2_raw, ir2_cm])
