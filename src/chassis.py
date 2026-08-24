@@ -261,7 +261,7 @@ class ChassisController:
         print(f"--> Robot moving forward {distance} meters (speed {speed} m/s)")
         self.ep_chassis.move(x=distance, y=0, z=0, xy_speed=speed).wait_for_completed()
 
-    def auto_drive(self, forward_speed=0.2, stop_threshold_mm=65):
+    def auto_drive(self, forward_speed=0.2, stop_threshold_mm=250):
         """
         ฟังก์ชันเดินหน้าอัตโนมัติพร้อมประคองกำแพงซ้าย-ขวา
         """
@@ -290,11 +290,11 @@ class ChassisController:
                 
                 # ถ้าเซนเซอร์ตัวที่ 1 (สมมติว่าเป็นซ้าย) เข้าใกล้กำแพงเกินไป (น้อยกว่า 18cm) ให้เลี้ยวหนีไปทางขวา (-)
                 if ir1_cm < 18.0:
-                    z_speed -= 10.0 
+                    z_speed -= 1.0 
                     
                 # ถ้าเซนเซอร์ตัวที่ 2 (สมมติว่าเป็นขวา) เข้าใกล้กำแพงเกินไป ให้เลี้ยวหนีไปทางซ้าย (+)
                 if ir2_cm < 18.0:
-                    z_speed += 10.0
+                    z_speed += 1.0
 
                 # 4. สั่งหุ่นยนต์เดินหน้าพร้อมประคองเลี้ยวอย่างต่อเนื่อง
                 # [แก้ไข] เปลี่ยนจาก move() เป็น drive_speed()

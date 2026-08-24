@@ -10,9 +10,10 @@ pyyaml
 #   See https://www.python.org/dev/peps/pep-0440/#version-specifiers
 numpy >= 1.18
 opencv-python >= 4.2
-netaddr >= 0
-.8
+netaddr >= 0.8
 netifaces >= 0.10
+pandas >= 1.0
+matplotlib >= 3.0
 #
 ###### Refer to other requirements files ######
 #-r other-requirements.txt
