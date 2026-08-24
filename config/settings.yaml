@@ -21,5 +21,5 @@ data_collection:
 movement:
   xy_speed: 1      # Forward/Reverse Speed ​​(m/s)
   distance: 0.6      # Forward/backward travel distance (m)
-  z_speed: 30        # Rotation speed (degrees/second)
+  z_speed: 120        # Rotation speed (degrees/second)
   angle: 90          # Initial turning angle (e.g., 90 degrees)

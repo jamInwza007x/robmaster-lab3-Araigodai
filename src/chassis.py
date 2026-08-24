@@ -13,6 +13,9 @@ class ChassisController:
         self.ep_sensor = ep_robot.sensor  # <-- NEW: Initialize the sensor module
         self.ep_sensor_adaptor = ep_robot.sensor_adaptor
 
+        self.prev_ir1_cm = 30.0
+        self.prev_ir2_cm = 30.0
+
         # 2. Retrieve values from the configuration.
         self.data_dir = config["data_collection"]["data_dir"]
         self.buffer_time = config["data_collection"]["buffer_time"]
@@ -135,26 +138,27 @@ class ChassisController:
     def read_sharp_ir_sensor_1(self):
         """Polls the ADC port and logs the raw voltage data."""
         # Read the ADC value from the sensor adapter (id=1, port=1)
-        adc_value = self.ep_sensor_adaptor.get_adc(id=1, port=1)
+        adc_value = self.ep_sensor_adaptor.get_adc(id=2, port=1)
         # print(f"Sensor adapter id1-port1 ADC is {adc_value}")
 
         return adc_value
 
     def read_sharp_ir_sensor_2(self):
         """Polls the ADC port and logs the raw voltage data."""
-        # Read the ADC value from the sensor adapter (id=1, port=2)
+        # Read the ADC value from the sensor adapter (id=1, port=1)
         adc_value = self.ep_sensor_adaptor.get_adc(id=1, port=2)
         # print(f"Sensor adapter id1-port2 ADC is {adc_value}")
 
         return adc_value
 
-    def adc_to_cm(self, adc_value,C):
+    def adc_to_cm(self, adc_value, C, prev_distance):
         """
         Converts the ADC reading to distance in centimeters.
         Note: ADC_MAX, M, and C require hardware-specific calibration.
         """
-        if adc_value <= 0:
-            return -1.0  # Prevent division by zero error
+
+        if adc_value is None or adc_value <= 0:
+            return -1.0
 
         # Assuming 10-bit ADC resolution (0-1023) and 3.3V maximum system voltage
         ADC_MAX = 1023.0
@@ -174,6 +178,9 @@ class ChassisController:
 
         distance_cm = (M / (voltage - C)) - 0.42
 
+        if prev_distance < 6 and distance_cm > 8.0:
+            return 3.0
+
         # Clamp the value to the 4 to 30 cm range based on sensor specifications
         if distance_cm < 4.0:
             return 4.0
@@ -191,8 +198,12 @@ class ChassisController:
                 ir2_raw = self.read_sharp_ir_sensor_2()
 
                 # Convert raw values to centimeters
-                ir1_cm = self.adc_to_cm(ir1_raw,0.8)
-                ir2_cm = self.adc_to_cm(ir2_raw,0)
+                ir1_cm = self.adc_to_cm(ir1_raw,0, self.prev_ir1_cm)
+                ir2_cm = self.adc_to_cm(ir2_raw,0, self.prev_ir2_cm)
+
+                # Update previous distances
+                self.prev_ir1_cm = ir1_cm
+                self.prev_ir2_cm = ir2_cm
 
                 # Save both raw and converted values to the single CSV file
                 self.save_to_csv(self.ir_file, [ir1_raw, ir1_cm, ir2_raw, ir2_cm])
@@ -240,6 +251,7 @@ class ChassisController:
     # Part 3: Motion Control Functions
     # (Remains identical to your original code)
     # =========================================================
+    
     def move_forward(self, distance=None, speed=None):
         if distance is None:
             distance = self.default_distance
