@@ -96,6 +96,7 @@ class ChassisController:
     def handle_distance(self, data):
         # <-- NEW: Callback for distance data
         self.save_to_csv(self.dist_file, data)
+        self.current_tof_dist_mm = data[0]
 
     # =========================================================
     # Part 2: Sensor Data Collection Management Function
@@ -260,6 +261,53 @@ class ChassisController:
         print(f"--> Robot moving forward {distance} meters (speed {speed} m/s)")
         self.ep_chassis.move(x=distance, y=0, z=0, xy_speed=speed).wait_for_completed()
 
+    def auto_drive(self, forward_speed=0.2, stop_threshold_mm=65):
+        """
+        ฟังก์ชันเดินหน้าอัตโนมัติพร้อมประคองกำแพงซ้าย-ขวา
+        """
+        print("--> เริ่มโหมดเดินหน้าอัตโนมัติ...")
+        
+        # กำหนดค่าเริ่มต้นให้กับ ToF เพื่อป้องกัน Error กรณีเซนเซอร์ยังไม่อ่านค่าชุดแรก
+        if not hasattr(self, 'current_tof_dist_mm'):
+            self.current_tof_dist_mm = 10000 
+
+        try:
+            while True:
+                # 1. ตรวจสอบสิ่งกีดขวางด้านหน้า (ToF)
+                tof_dist = self.current_tof_dist_mm
+                if 0 < tof_dist <= stop_threshold_mm:
+                    print(f"--> เจอสิ่งกีดขวางด้านหน้า! (ระยะ {tof_dist} mm) -> หยุดหุ่นยนต์")
+                    # [แก้ไข] ใช้ drive_speed(0,0,0) เพื่อหยุดความเร็วทันที
+                    self.ep_chassis.drive_speed(x=0, y=0, z=0)
+                    break
+
+                # 2. ดึงค่า IR ล่าสุดจาก Thread ที่ทำงานอยู่เบื้องหลัง
+                ir1_cm = self.prev_ir1_cm
+                ir2_cm = self.prev_ir2_cm
+                
+                # 3. คำนวณความเร็วในการหมุน Z (นำแรงหนีซ้าย-ขวามาบวกรวมกัน)
+                z_speed = 0.0
+                
+                # ถ้าเซนเซอร์ตัวที่ 1 (สมมติว่าเป็นซ้าย) เข้าใกล้กำแพงเกินไป (น้อยกว่า 18cm) ให้เลี้ยวหนีไปทางขวา (-)
+                if ir1_cm < 18.0:
+                    z_speed -= 10.0 
+                    
+                # ถ้าเซนเซอร์ตัวที่ 2 (สมมติว่าเป็นขวา) เข้าใกล้กำแพงเกินไป ให้เลี้ยวหนีไปทางซ้าย (+)
+                if ir2_cm < 18.0:
+                    z_speed += 10.0
+
+                # 4. สั่งหุ่นยนต์เดินหน้าพร้อมประคองเลี้ยวอย่างต่อเนื่อง
+                # [แก้ไข] เปลี่ยนจาก move() เป็น drive_speed()
+                self.ep_chassis.drive_speed(x=forward_speed, y=0, z=z_speed)
+                
+                # 20Hz เพื่อให้รับคำสั่งได้ลื่นไหล
+                time.sleep(0.05)
+                
+        except KeyboardInterrupt:
+            print("\n--> ยกเลิกการทำงานโดยผู้ใช้")
+            # [แก้ไข] เปลี่ยนจาก move() เป็น drive_speed()
+            self.ep_chassis.drive_speed(x=0, y=0, z=0)
+
     def move_backward(self, distance=None, speed=None):
         if distance is None:
             distance = self.default_distance
@@ -290,16 +338,24 @@ class ChassisController:
 
     def test_movement(self):
         print("--- Starting mobility test ---")
-        self.move_forward()
-        time.sleep(1)
+        
+        # 1. เดินหน้าอัตโนมัติจนกว่าจะเจอสิ่งกีดขวาง
+        print("Step 1: Auto Drive")
+        self.auto_drive()
+        
+        # หยุดพักเล็กน้อยเพื่อให้หุ่นยนต์นิ่งก่อนเลี้ยว
+        time.sleep(1) 
+        
+        # 2. เลี้ยวขวา 90 องศา (อ้างอิงจากค่า default_angle)
+        print("Step 2: Turn Right")
         self.turn_right()
-        self.move_forward()
+        
+        # หยุดพักเล็กน้อยก่อนเริ่มเดินหน้าต่อ
         time.sleep(1)
-        self.turn_right()
-        self.move_forward()
-        time.sleep(1)
-        self.turn_right()
-        self.move_forward()
-        time.sleep(1)
-        self.turn_right()
+        
+        # 3. เดินหน้าอัตโนมัติอีกครั้ง
+        print("Step 3: Auto Drive")
+        self.auto_drive()
+        
         print("--- Movement complete ---")
+        
