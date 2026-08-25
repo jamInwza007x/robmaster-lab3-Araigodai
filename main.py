@@ -23,6 +23,7 @@ def main():
         arm_gripper_ctrl = ArmGripperController(ep_robot)
 
         chassis_ctrl.start_sensors()
+        chassis_ctrl.setup_csv_headers()
 
         # หน่วงเวลาเล็กน้อย (1-2 วินาที) เพื่อให้เซนเซอร์ ToF และ IR ดึงค่าชุดแรกมาเก็บไว้ในตัวแปรก่อนเริ่มเดิน
         print("รอเซนเซอร์เริ่มทำงานและอ่านค่าชุดแรก...")

@@ -106,6 +106,7 @@ def plot_grid_map(data_dir):
     
     ax.set_aspect('equal') # รักษาสัดส่วน 1:1 ป้องกันกราฟเบี้ยว
     ax.legend(loc='upper right')
+    ax.invert_xaxis()
 
     # บันทึกรูปภาพ
     output_img = os.path.join(data_dir, 'grid_map_with_walls.png')
