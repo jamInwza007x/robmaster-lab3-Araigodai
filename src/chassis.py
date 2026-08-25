@@ -261,51 +261,79 @@ class ChassisController:
         print(f"--> Robot moving forward {distance} meters (speed {speed} m/s)")
         self.ep_chassis.move(x=distance, y=0, z=0, xy_speed=speed).wait_for_completed()
 
-    def auto_drive(self, forward_speed=0.2, stop_threshold_mm=250):
+    def auto_drive(self, check=True, ir=None, forward_speed=0.1, stop_threshold_mm=200):
         """
-        ฟังก์ชันเดินหน้าอัตโนมัติพร้อมประคองกำแพงซ้าย-ขวา
+        ฟังก์ชันเดินหน้าอัตโนมัติพร้อมสไลด์ข้าง (แกน Y) ให้อยู่ตรงกลางระหว่างกำแพง 2 ข้าง
         """
-        print("--> เริ่มโหมดเดินหน้าอัตโนมัติ...")
+        print("--> เริ่มโหมดเดินหน้าอัตโนมัติ (วิ่งตรงกลางแบบสไลด์ข้าง)...")
         
-        # กำหนดค่าเริ่มต้นให้กับ ToF เพื่อป้องกัน Error กรณีเซนเซอร์ยังไม่อ่านค่าชุดแรก
+        # กำหนดค่าเริ่มต้นให้กับ ToF
         if not hasattr(self, 'current_tof_dist_mm'):
             self.current_tof_dist_mm = 10000 
+
+        current_y = 0.0  # เปลี่ยนจาก current_z เป็น current_y
+        ky = 0.1         # ค่าความไวในการสไลด์ข้าง (ปรับขึ้นถ้าสไลด์หลบไม่ทัน)
+        max_y = 0.05      # ความเร็วสูงสุดในการสไลด์ (m/s) อย่าตั้งสูงเกินไปเดี๋ยวหุ่นสะบัด
+        alpha = 0.2      # ค่า Smoothing 
 
         try:
             while True:
                 # 1. ตรวจสอบสิ่งกีดขวางด้านหน้า (ToF)
                 tof_dist = self.current_tof_dist_mm
-                if 0 < tof_dist <= stop_threshold_mm:
-                    print(f"--> เจอสิ่งกีดขวางด้านหน้า! (ระยะ {tof_dist} mm) -> หยุดหุ่นยนต์")
-                    # [แก้ไข] ใช้ drive_speed(0,0,0) เพื่อหยุดความเร็วทันที
-                    self.ep_chassis.drive_speed(x=0, y=0, z=0)
-                    break
+                if check:
+                    if 0 < tof_dist <= stop_threshold_mm:
+                        print(f"--> เจอสิ่งกีดขวางด้านหน้า! (ระยะ {tof_dist} mm) -> หยุดหุ่นยนต์")
+                        self.ep_chassis.drive_speed(x=0, y=0, z=0)
+                        break
+                else:
+                    # เงื่อนไขเมื่อสุดกำแพง
+                    if ir == 1:
+                        ir1_cm = self.prev_ir1_cm
+                        if ir1_cm > 20.0:
+                            self.ep_chassis.drive_speed(x=0, y=0, z=0)
+                            self.move_forward(0.3, 0.1)
+                            self.turn_right()
+                            break
+                    elif ir == 2:
+                        ir2_cm = self.prev_ir2_cm
+                        if ir2_cm > 20.0:
+                            self.ep_chassis.drive_speed(x=0, y=0, z=0)
+                            self.move_forward(0.3, 0.1)
+                            self.turn_left()
+                            break
 
-                # 2. ดึงค่า IR ล่าสุดจาก Thread ที่ทำงานอยู่เบื้องหลัง
-                ir1_cm = self.prev_ir1_cm
-                ir2_cm = self.prev_ir2_cm
+                # 2. ดึงค่า IR ล่าสุด
+                ir1_cm = self.prev_ir1_cm  # สมมติว่าเป็น ซ้าย
+                ir2_cm = self.prev_ir2_cm  # สมมติว่าเป็น ขวา
                 
-                # 3. คำนวณความเร็วในการหมุน Z (นำแรงหนีซ้าย-ขวามาบวกรวมกัน)
-                z_speed = 0.0
-                
-                # ถ้าเซนเซอร์ตัวที่ 1 (สมมติว่าเป็นซ้าย) เข้าใกล้กำแพงเกินไป (น้อยกว่า 18cm) ให้เลี้ยวหนีไปทางขวา (-)
-                if ir1_cm < 18.0:
-                    z_speed -= 1.0 
-                    
-                # ถ้าเซนเซอร์ตัวที่ 2 (สมมติว่าเป็นขวา) เข้าใกล้กำแพงเกินไป ให้เลี้ยวหนีไปทางซ้าย (+)
-                if ir2_cm < 18.0:
-                    z_speed += 1.0
+                # ====================================================
+                # 3. คำนวณความเร็วแกน Y (สไลด์ข้าง)
+                # ====================================================
+                # - ถ้า ir1 (ซ้าย) น้อยกว่า -> ค่าติดลบ -> สไลด์ไปทิศหนึ่ง
+                # - ถ้า ir1 (ซ้าย) มากกว่า -> ค่าเป็นบวก -> สไลด์ไปอีกทิศหนึ่ง
+                if ir1_cm > 25:
+                    ir1_cm = 17.5
+                if ir2_cm > 25:
+                    ir2_cm =17.5
 
-                # 4. สั่งหุ่นยนต์เดินหน้าพร้อมประคองเลี้ยวอย่างต่อเนื่อง
-                # [แก้ไข] เปลี่ยนจาก move() เป็น drive_speed()
-                self.ep_chassis.drive_speed(x=forward_speed, y=0, z=z_speed)
+                target_y = (ir1_cm - ir2_cm) * ky
+
+                # ป้องกันไม่ให้สไลด์เร็วเกินไป
+                target_y = max(-max_y, min(max_y, target_y))
                 
-                # 20Hz เพื่อให้รับคำสั่งได้ลื่นไหล
-                time.sleep(0.05)
+                # ทำ Smoothing เพื่อให้สไลด์เนียนขึ้น ไม่กระตุก
+                current_y = (alpha * target_y) + ((1 - alpha) * current_y)
+
+                # 4. สั่งหุ่นยนต์เดินหน้า (x) พร้อมสไลด์ข้าง (y) โดยไม่มีการหมุน (z=0)
+                # **ข้อควรระวัง:** ทิศทาง +y หรือ -y ขึ้นอยู่กับระบบของหุ่น
+                # ถ้าหุ่นสไลด์ผิดทาง (ยิ่งเข้าใกล้กำแพงยิ่งสไลด์ชน) ให้แก้สมการเป็น target_y = (ir2_cm - ir1_cm) * ky
+                self.ep_chassis.drive_speed(x=forward_speed, y=current_y, z=0)
+                
+                # Delay
+                time.sleep(0.01)
                 
         except KeyboardInterrupt:
             print("\n--> ยกเลิกการทำงานโดยผู้ใช้")
-            # [แก้ไข] เปลี่ยนจาก move() เป็น drive_speed()
             self.ep_chassis.drive_speed(x=0, y=0, z=0)
 
     def move_backward(self, distance=None, speed=None):
@@ -339,22 +367,22 @@ class ChassisController:
     def test_movement(self):
         print("--- Starting mobility test ---")
         
-        # 1. เดินหน้าอัตโนมัติจนกว่าจะเจอสิ่งกีดขวาง
-        print("Step 1: Auto Drive")
         self.auto_drive()
-        
-        # หยุดพักเล็กน้อยเพื่อให้หุ่นยนต์นิ่งก่อนเลี้ยว
-        time.sleep(1) 
-        
-        # 2. เลี้ยวขวา 90 องศา (อ้างอิงจากค่า default_angle)
-        print("Step 2: Turn Right")
+        time.sleep(0.1)
         self.turn_right()
-        
-        # หยุดพักเล็กน้อยก่อนเริ่มเดินหน้าต่อ
-        time.sleep(1)
-        
-        # 3. เดินหน้าอัตโนมัติอีกครั้ง
-        print("Step 3: Auto Drive")
+        time.sleep(0.1)
+        self.auto_drive()
+        time.sleep(0.1)
+        self.turn_left()
+        time.sleep(0.1)
+        self.auto_drive()
+        time.sleep(0.1)
+        self.turn_right()
+        time.sleep(0.1)
+        self.auto_drive()
+        time.sleep(0.1)
+        self.turn_left()
+        time.sleep(0.1)
         self.auto_drive()
         
         print("--- Movement complete ---")
