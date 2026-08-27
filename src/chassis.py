@@ -15,6 +15,7 @@ class ChassisController:
 
         self.prev_ir1_cm = 30.0
         self.prev_ir2_cm = 30.0
+        self.current_yaw = 0.0
 
         # 2. Retrieve values from the configuration.
         self.data_dir = config["data_collection"]["data_dir"]
@@ -86,6 +87,7 @@ class ChassisController:
 
     def handle_attitude(self, data):
         self.save_to_csv(self.att_file, data)
+        self.current_yaw = data[0]
 
     def handle_imu(self, data):
         self.save_to_csv(self.imu_file, data)
@@ -261,7 +263,7 @@ class ChassisController:
         print(f"--> Robot moving forward {distance} meters (speed {speed} m/s)")
         self.ep_chassis.move(x=distance, y=0, z=0, xy_speed=speed).wait_for_completed()
 
-    def auto_drive(self, check=True, ir=None, forward_speed=0.1, stop_threshold_mm=200):
+    def auto_drive(self, check=True, ir=None, forward_speed=0.1, stop_threshold_mm=150):
         """
         ฟังก์ชันเดินหน้าอัตโนมัติพร้อมสไลด์ข้าง (แกน Y) ให้อยู่ตรงกลางระหว่างกำแพง 2 ข้าง
         """
@@ -289,14 +291,14 @@ class ChassisController:
                     # เงื่อนไขเมื่อสุดกำแพง
                     if ir == 1:
                         ir1_cm = self.prev_ir1_cm
-                        if ir1_cm > 20.0:
+                        if ir1_cm > 28.0:
                             self.ep_chassis.drive_speed(x=0, y=0, z=0)
                             self.move_forward(0.3, 0.1)
                             self.turn_right()
                             break
                     elif ir == 2:
                         ir2_cm = self.prev_ir2_cm
-                        if ir2_cm > 20.0:
+                        if ir2_cm > 28.0:
                             self.ep_chassis.drive_speed(x=0, y=0, z=0)
                             self.move_forward(0.3, 0.1)
                             self.turn_left()
@@ -368,22 +370,29 @@ class ChassisController:
         print("--- Starting mobility test ---")
         
         self.auto_drive()
-        time.sleep(0.1)
+        time.sleep(0.5)
         self.turn_right()
-        time.sleep(0.1)
+        time.sleep(0.5)
+        self.auto_drive(False, 2)
+        time.sleep(0.5)
         self.auto_drive()
-        time.sleep(0.1)
-        self.turn_left()
-        time.sleep(0.1)
-        self.auto_drive()
-        time.sleep(0.1)
+        time.sleep(0.5)
         self.turn_right()
-        time.sleep(0.1)
+        time.sleep(0.5)
         self.auto_drive()
-        time.sleep(0.1)
-        self.turn_left()
-        time.sleep(0.1)
+        time.sleep(0.5)
+        self.turn_right()
+        time.sleep(0.5)
+        self.move_forward(0.6,0.05)
+        time.sleep(0.5)
+        self.turn_right()
+        time.sleep(0.5)
         self.auto_drive()
+        time.sleep(0.5)
+        self.ep_chassis.move(x=0, y=-0.215, z=0, xy_speed= 0.1).wait_for_completed()
+        time.sleep(0.5)
+        #self.auto_drive( , , , stop_threshold_mm=755)
+        self.move_backward(0.755,0.05)
         
         print("--- Movement complete ---")
         

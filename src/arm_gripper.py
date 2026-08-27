@@ -28,7 +28,7 @@ class ArmGripperController:
         self.ep_gripper.pause()
 
         print("--> ยกแขนกลขึ้น...")
-        self.ep_arm.move(x=0, y=120).wait_for_completed()
+        self.ep_arm.move(x=0, y=180).wait_for_completed()
 
     def release_object(self, power=50):
         """ลำดับการทำงานสำหรับวางวัตถุ"""
