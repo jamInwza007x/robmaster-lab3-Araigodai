@@ -19,7 +19,7 @@ data_collection:
   buffer_time: 0.5   # Wait time before closing (seconds)
 
 movement:
-  xy_speed: 0.05      # Forward/Reverse Speed ​​(m/s)
+  xy_speed: 0.5     # Forward/Reverse Speed ​​(m/s)
   distance: 0.6      # Forward/backward travel distance (m)
-  z_speed: 10        # Rotation speed (degrees/second)
+  z_speed: 90        # Rotation speed (degrees/second)
   angle: 90          # Initial turning angle (e.g., 90 degrees)

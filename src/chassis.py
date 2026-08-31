@@ -263,79 +263,247 @@ class ChassisController:
         print(f"--> Robot moving forward {distance} meters (speed {speed} m/s)")
         self.ep_chassis.move(x=distance, y=0, z=0, xy_speed=speed).wait_for_completed()
 
-    def auto_drive(self, check=True, ir=None, forward_speed=0.1, stop_threshold_mm=150):
+    def safe_move_forward(self, distance=0.6, speed=0.3, stop_limit_mm=175):
         """
-        ฟังก์ชันเดินหน้าอัตโนมัติพร้อมสไลด์ข้าง (แกน Y) ให้อยู่ตรงกลางระหว่างกำแพง 2 ข้าง
+        เดินหน้าแบบปลอดภัย คืนค่า True ถ้าย้ายสำเร็จ / False ถ้าเกิดเบรกฉุกเฉิน
+        พร้อมระบบสไลด์รักษาระยะกึ่งกลางแบบ Real-time
         """
-        print("--> เริ่มโหมดเดินหน้าอัตโนมัติ (วิ่งตรงกลางแบบสไลด์ข้าง)...")
+        print(f"--> [Safe Move] กำลังเดินหน้า {distance}m พร้อมรักษากึ่งกลาง...")
+        travel_time = distance / speed
+        start_time = time.time()
+
+        current_y = 0.0
+        ky = 0.2
+        max_y = 0.05  # ปรับลดลงเพื่อไม่ให้หุ่นสะบัดสไลด์เร็วเกินไป
+        alpha = 0.2
         
-        # กำหนดค่าเริ่มต้นให้กับ ToF
-        if not hasattr(self, 'current_tof_dist_mm'):
-            self.current_tof_dist_mm = 10000 
+        # ใช้ลูปเดียว: เช็คเวลาเดิน ควบคู่กับเช็คเซนเซอร์ตลอดทาง
+        while (time.time() - start_time) < travel_time:
+            
+            # 1. เช็คเบรกฉุกเฉิน (ToF)
+            front_dist = self.current_tof_dist_mm
+            if 0 < front_dist <= stop_limit_mm:
+                print(f"!!! [เบรกฉุกเฉิน] เจอสิ่งกีดขวางระยะ {front_dist}mm หยุดการทำงาน !!!")
+                self.ep_chassis.drive_speed(x=0, y=0, z=0)
+                time.sleep(0.5)
+                return True # แจ้งกลับไปว่าเดินไม่สำเร็จ
 
-        current_y = 0.0  # เปลี่ยนจาก current_z เป็น current_y
-        ky = 0.1         # ค่าความไวในการสไลด์ข้าง (ปรับขึ้นถ้าสไลด์หลบไม่ทัน)
-        max_y = 0.05      # ความเร็วสูงสุดในการสไลด์ (m/s) อย่าตั้งสูงเกินไปเดี๋ยวหุ่นสะบัด
-        alpha = 0.2      # ค่า Smoothing 
+            # 2. อ่านค่า IR เพื่อสไลด์กึ่งกลาง
+            ir1_cm = self.prev_ir1_cm
+            ir2_cm = self.prev_ir2_cm
+            
+            if ir1_cm > 25:
+                ir1_cm = 17.5
+            if ir2_cm > 25:
+                ir2_cm = 17.5
+            
+            target_y = (ir1_cm - ir2_cm) * ky
+            
+            # ป้องกันไม่ให้สไลด์เร็วเกินไป
+            target_y = max(-max_y, min(max_y, target_y))
+            
+            # ทำ Smoothing เพื่อให้สไลด์เนียนขึ้น ไม่กระตุก
+            current_y = (alpha * target_y) + ((1 - alpha) * current_y)
+            
+            # 3. สั่งหุ่นยนต์ให้เดินหน้าพร้อมสไลด์ข้าง (อัปเดตแบบ Real-time)
+            self.ep_chassis.drive_speed(x=speed, y=current_y, z=0)
+            
+            # หน่วงเวลาสั้นๆ ก่อนคำนวณรอบถัดไป
+            time.sleep(0.1)
+            
+        # เมื่อครบเวลาเดิน (ถึงเป้าหมาย 1 ช่อง) สั่งให้หุ่นหยุดนิ่ง
+        self.ep_chassis.drive_speed(x=0, y=0, z=0)
+        time.sleep(0.5)
+        return True # เดินสำเร็จถึงเป้าหมาย
+    
+    def auto_drive_general(self, forward_speed=0.3, stop_threshold_mm=150):
+        """
+        ฟังก์ชันวิ่งรักษากึ่งกลาง พร้อมระบบ Safety Check กันชน
+        """
+        current_y = 0.0
+        ky = 0.3
+        max_y = 0.05
+        alpha = 0.2
+        SIDE_OPEN_CM = 20.0  
 
-        try:
-            while True:
-                # 1. ตรวจสอบสิ่งกีดขวางด้านหน้า (ToF)
-                tof_dist = self.current_tof_dist_mm
-                if check:
-                    if 0 < tof_dist <= stop_threshold_mm:
-                        print(f"--> เจอสิ่งกีดขวางด้านหน้า! (ระยะ {tof_dist} mm) -> หยุดหุ่นยนต์")
-                        self.ep_chassis.drive_speed(x=0, y=0, z=0)
-                        break
-                else:
-                    # เงื่อนไขเมื่อสุดกำแพง
-                    if ir == 1:
-                        ir1_cm = self.prev_ir1_cm
-                        if ir1_cm > 28.0:
-                            self.ep_chassis.drive_speed(x=0, y=0, z=0)
-                            self.move_forward(0.3, 0.1)
-                            self.turn_right()
-                            break
-                    elif ir == 2:
-                        ir2_cm = self.prev_ir2_cm
-                        if ir2_cm > 28.0:
-                            self.ep_chassis.drive_speed(x=0, y=0, z=0)
-                            self.move_forward(0.3, 0.1)
-                            self.turn_left()
-                            break
-
-                # 2. ดึงค่า IR ล่าสุด
-                ir1_cm = self.prev_ir1_cm  # สมมติว่าเป็น ซ้าย
-                ir2_cm = self.prev_ir2_cm  # สมมติว่าเป็น ขวา
+        while True:
+            front_dist = self.current_tof_dist_mm
+            left_dist = self.prev_ir2_cm
+            right_dist = self.prev_ir1_cm
+            
+            # 1. Safety Check: เช็คระยะกำแพงหน้าก่อนเสมอ (เบรกที่ 30 ซม.)
+            if 0 < front_dist <= stop_threshold_mm:
+                self.ep_chassis.drive_speed(x=0, y=0, z=0)
+                break
                 
-                # ====================================================
-                # 3. คำนวณความเร็วแกน Y (สไลด์ข้าง)
-                # ====================================================
-                # - ถ้า ir1 (ซ้าย) น้อยกว่า -> ค่าติดลบ -> สไลด์ไปทิศหนึ่ง
-                # - ถ้า ir1 (ซ้าย) มากกว่า -> ค่าเป็นบวก -> สไลด์ไปอีกทิศหนึ่ง
-                if ir1_cm > 25:
-                    ir1_cm = 17.5
-                if ir2_cm > 25:
-                    ir2_cm =17.5
+            # 2. เจอทางแยก (ซ้ายหรือขวาเปิดโล่ง)
+            if right_dist > SIDE_OPEN_CM or left_dist > SIDE_OPEN_CM:
+                self.ep_chassis.drive_speed(x=0, y=0, z=0)
+                
+                # ดันหุ่นไปข้างหน้า 15 ซม. เพื่อตั้งลำเลี้ยว 
+                # *เซฟตี้: ทำได้ก็ต่อเมื่อข้างหน้าต้องมีที่ว่างมากกว่าระยะเบรก + 15 ซม.*
+                if front_dist > (stop_threshold_mm + 150):
+                    self.move_forward(0.15, speed=0.1) 
+                break
 
-                target_y = (ir1_cm - ir2_cm) * ky
+            ir1_cm = self.prev_ir1_cm
+            ir2_cm = self.prev_ir2_cm
+                
+            if ir1_cm > 25:
+                ir1_cm = 17.5
+            if ir2_cm > 25:
+                ir2_cm =17.5
+
+            target_y = (ir1_cm - ir2_cm) * ky
 
                 # ป้องกันไม่ให้สไลด์เร็วเกินไป
-                target_y = max(-max_y, min(max_y, target_y))
+            target_y = max(-max_y, min(max_y, target_y))
                 
                 # ทำ Smoothing เพื่อให้สไลด์เนียนขึ้น ไม่กระตุก
-                current_y = (alpha * target_y) + ((1 - alpha) * current_y)
+            current_y = (alpha * target_y) + ((1 - alpha) * current_y)
 
                 # 4. สั่งหุ่นยนต์เดินหน้า (x) พร้อมสไลด์ข้าง (y) โดยไม่มีการหมุน (z=0)
                 # **ข้อควรระวัง:** ทิศทาง +y หรือ -y ขึ้นอยู่กับระบบของหุ่น
                 # ถ้าหุ่นสไลด์ผิดทาง (ยิ่งเข้าใกล้กำแพงยิ่งสไลด์ชน) ให้แก้สมการเป็น target_y = (ir2_cm - ir1_cm) * ky
-                self.ep_chassis.drive_speed(x=forward_speed, y=current_y, z=0)
+            self.ep_chassis.drive_speed(x=forward_speed, y=current_y, z=0)
                 
                 # Delay
-                time.sleep(0.01)
+            time.sleep(0.01)
+
+    def explore_and_map_all(self):
+        """
+        อัลกอริทึมทำแผนที่ 4x4 Grid (DFS) สำรวจ 100%
+        เจอ Goal แล้วไม่หยุด จะถอยกลับไปสำรวจซอยที่เหลือจนกว่าจะครบ
+        """
+        print("--- เริ่มการสร้างแผนที่แบบสมบูรณ์ 4x4 Grid (DFS Mapping) ---")
+        
+        if not hasattr(self, 'current_tof_dist_mm'):
+            self.current_tof_dist_mm = 10000 
+            
+        CELL_SIZE = 0.6       
+        FRONT_WALL_MM = 300   
+        SIDE_OPEN_CM = 25.0   
+
+        visited = set()       
+        stack = []            
+        
+        x, y = 0, 0
+        heading = 0 # 0:N, 1:E, 2:S, 3:W
+        moves = {0: (0, 1), 1: (1, 0), 2: (0, -1), 3: (-1, 0)}
+
+        MAX_X = 3
+        MAX_Y = 3
+        
+        goal_reached = False # ตัวแปรเช็คว่าเจอ Goal หรือยัง
+
+        try:
+            while True:
+                self.ep_chassis.drive_speed(x=0, y=0, z=0)
+                time.sleep(0.5) 
                 
+                visited.add((x, y))
+                print(f"\n[Map] พิกัดปัจจุบัน: ({x}, {y}) หันหน้าทิศ: {heading}")
+                
+                # 💡 ถ้าเจอ Goal ให้แจ้งเตือน แต่ "ไม่ตัดจบโปรแกรม" เพื่อให้ไปสำรวจช่องอื่นต่อ
+                if x == 3 and y == 0 and not goal_reached:
+                    print("\n=== 🎉 ค้นพบจุด Goal (3,0) แล้ว! ระบบจะเดินสำรวจพื้นที่ส่วนที่เหลือต่อให้ครบ 100% ===")
+                    goal_reached = True
+                
+                front_dist = self.current_tof_dist_mm
+                right_dist = self.prev_ir1_cm  # IR 1 (ขวา)
+                left_dist = self.prev_ir2_cm   # IR 2 (ซ้าย)
+                
+                open_dirs = []
+                if front_dist > FRONT_WALL_MM:
+                    open_dirs.append(heading)
+                if right_dist > SIDE_OPEN_CM:
+                    open_dirs.append((heading + 1) % 4)
+                if left_dist > SIDE_OPEN_CM:
+                    open_dirs.append((heading + 3) % 4)
+                
+                unvisited = []
+                for d in open_dirs:
+                    target_x = x + moves[d][0]
+                    target_y = y + moves[d][1]
+                    if 0 <= target_x <= MAX_X and 0 <= target_y <= MAX_Y:
+                        if (target_x, target_y) not in visited:
+                            unvisited.append(d)
+                
+                if unvisited:
+                    next_heading = unvisited[0]
+                    stack.append((x, y, heading))
+                    
+                    turn_angle = (next_heading - heading) * 90
+                    if turn_angle > 180: turn_angle -= 360
+                    if turn_angle < -180: turn_angle += 360
+                    
+                    print(f"-> เจอช่องว่าง! เลี้ยวทิศ {next_heading} (หมุน {turn_angle} องศา)")
+                    
+                    if turn_angle == 90:
+                        self.turn_right(90)
+                    elif turn_angle == -90:
+                        self.turn_left(90)
+                    elif abs(turn_angle) == 180:
+                        self.turn_right(180)
+                        
+                    time.sleep(0.5) 
+                    
+                    if self.current_tof_dist_mm < 500:
+                        print(f"-> [Double Check] ToF แจ้งว่าทางตัน มาร์คพิกัดนี้เป็นกำแพง!")
+                        tx = x + moves[next_heading][0]
+                        ty = y + moves[next_heading][1]
+                        visited.add((tx, ty)) 
+                        stack.pop() 
+                        continue 
+                        
+                    success = self.safe_move_forward(distance=CELL_SIZE)
+                    
+                    if success:
+                        x += moves[next_heading][0]
+                        y += moves[next_heading][1]
+                        heading = next_heading
+                    else:
+                        print("-> [Error] เกิดเบรกฉุกเฉิน ถอยกลับไปกลางกริดเดิม!")
+                        tx = x + moves[next_heading][0]
+                        ty = y + moves[next_heading][1]
+                        visited.add((tx, ty))
+                        stack.pop()
+                        
+                else:
+                    # ถ้า Stack ว่างเปล่า แปลว่าสำรวจและถอยกลับมาจนถึงจุดเริ่มต้นแล้ว
+                    if not stack:
+                        print("\n=== สำรวจแผนที่ 4x4 ครบ 100% แล้ว! หุ่นยนต์หยุดทำงาน ===")
+                        break
+                        
+                    prev_x, prev_y, prev_heading = stack.pop()
+                    print(f"-> ทางตัน/สำรวจหมดแล้ว! ถอยกลับไปพิกัด ({prev_x}, {prev_y})")
+                    
+                    dx = prev_x - x
+                    dy = prev_y - y
+                    target_heading = 0
+                    for h, m in moves.items():
+                        if m == (dx, dy):
+                            target_heading = h
+                            break
+                            
+                    turn_angle = (target_heading - heading) * 90
+                    if turn_angle > 180: turn_angle -= 360
+                    if turn_angle < -180: turn_angle += 360
+                    
+                    if turn_angle == 90:
+                        self.turn_right(90)
+                    elif turn_angle == -90:
+                        self.turn_left(90)
+                    elif abs(turn_angle) == 180:
+                        self.turn_right(180)
+                        
+                    self.safe_move_forward(distance=CELL_SIZE)
+                    
+                    x, y = prev_x, prev_y
+                    heading = target_heading
+                    
         except KeyboardInterrupt:
-            print("\n--> ยกเลิกการทำงานโดยผู้ใช้")
+            print("\n--> ยกเลิกการสำรวจโดยผู้ใช้")
             self.ep_chassis.drive_speed(x=0, y=0, z=0)
 
     def move_backward(self, distance=None, speed=None):

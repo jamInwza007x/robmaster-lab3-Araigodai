@@ -30,16 +30,7 @@ def main():
         print("รอเซนเซอร์เริ่มทำงานและอ่านค่าชุดแรก...")
         time.sleep(2)
 
-        arm_gripper_ctrl.reset_position()
-        arm_gripper_ctrl.pick_up_object(x_dist=60, y_dist=-40, power=50)
-
-        # 5. เริ่มรันลำดับการเคลื่อนที่ (Auto Drive -> Turn Right -> Auto Drive)
-        chassis_ctrl.test_movement()
-
-
-
-        arm_gripper_ctrl.release_object(power=50)
-        arm_gripper_ctrl.reset_position()
+        chassis_ctrl.explore_and_map_all()
         
     except Exception as e:
         print(f"Error: {e}")
