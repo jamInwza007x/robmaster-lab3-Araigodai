@@ -6,10 +6,11 @@ data_collection:
   files:
     position: "position_data"
     attitude: "attitude_data"
-    imu: "idle_imu_data.csv"
+    imu: "idle_imu_data"
     esc: "esc_data.csv"
     distance: "tof_data"
     infrared: "ir_data"
+    lidar: "gimbal_lidar_data"
   frequencies:
     position: 1
     attitude: 5
@@ -23,3 +24,11 @@ movement:
   distance: 0.6      # Forward/backward travel distance (m)
   z_speed: 90        # Rotation speed (degrees/second)
   angle: 90          # Initial turning angle (e.g., 90 degrees)
+
+  lidar_scan:
+  start_yaw: -75             
+  end_yaw: 75
+  yaw_speed: 25
+  pitch: 0
+  min_valid_dist_mm: 100
+  max_valid_dist_mm: 10000

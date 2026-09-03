@@ -2,4 +2,4 @@
 from .chassis import ChassisController
 from .arm_gripper import ArmGripperController
 
-__all__ = ["ChassisController", "ArmGripperController"]
+__all__ = ["ChassisController", "ArmGripperController", "GimbalLidarController"]

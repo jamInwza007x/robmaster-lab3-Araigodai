@@ -198,6 +198,7 @@ class ChassisController:
             try:
                 # Read raw ADC values
                 ir1_raw = self.read_sharp_ir_sensor_1()
+                time.sleep(0.05)
                 ir2_raw = self.read_sharp_ir_sensor_2()
 
                 # Convert raw values to centimeters
